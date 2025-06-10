@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+*.aux
+*.log
+*.out
+*.synctex.gz
+
+# Raw datasets are not tracked; download them with scripts/00_download_data.py
+data/ptb_xl_fmm/
+data/ChapmanShaoxing/
+data/ChapmanShaoxing_fmm/
+data/ptb-xl/
+data/**/*.zip
