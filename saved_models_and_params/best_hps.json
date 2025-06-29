@@ -1,0 +1,10 @@
+{
+  "beta": 1.0,
+  "lr": 0.001,
+  "latent_dim": 64,
+  "n_blocks": 2,
+  "vae_auc": 0.8270442565549863,
+  "xgb_auc": 0.9227317241058381,
+  "batch_size": 64,
+  "epochs": 35
+}

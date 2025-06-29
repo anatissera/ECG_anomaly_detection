@@ -1,0 +1,38 @@
+{
+ "validation": {
+  "roc_auc": 0.8503,
+  "precision": 0.7399,
+  "recall": 0.8001,
+  "f1": 0.7688,
+  "accuracy": 0.7594
+ },
+ "test": {
+  "roc_auc": 0.8058,
+  "precision": 0.7116,
+  "recall": 0.74,
+  "f1": 0.7255,
+  "accuracy": 0.72
+ },
+ "threshold": 0.3892250955104828,
+ "criterion": "recall>=0.8 on validation",
+ "cm_test": [
+  [
+   4230,
+   1812
+  ],
+  [
+   1571,
+   4471
+  ]
+ ],
+ "cm_val": [
+  [
+   7343,
+   3306
+  ],
+  [
+   2125,
+   8524
+  ]
+ ]
+}
