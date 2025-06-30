@@ -1,0 +1,476 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{graphicx}         % Para incluir imágenes
+\usepackage{amsmath, amssymb, amsfonts}          % Para notación matemática
+\usepackage[margin=2cm]{geometry}  % Márgenes
+\usepackage[font=normalsize,labelfont=small]{caption}  % Estilo de captions
+\usepackage{hyperref}     
+% Para links clickeables
+\usepackage{booktabs}
+\usepackage{multicol}
+\usepackage{subcaption}
+
+\usepackage{bm}                 % \bm para vectores y matrices en negrita
+\usepackage{enumitem}           % control de listas (ej. [nosep] en itemize)
+
+
+\usepackage{float}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{setspace}
+
+
+% EXTENSIÓN MÁXIMA: 5 HOJAS SIN EXCEPCIÓN.
+\begin{document}
+\onehalfspacing
+
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    \includegraphics[scale=1.8]{Logo-Udesa.jpg}\par
+    \vspace{10pt}
+
+    {\LARGE \textbf{I302 - Aprendizaje Automático\\ y Aprendizaje Profundo}\par}
+    \vspace{1cm}
+
+    {\LARGE \textbf{Trabajo Práctico Final: \\Detección de anomalías en señales ECG}\par}
+    \vspace{4cm}
+    
+    {\LARGE {Ana Paula Tissera y Naomi Couriel}\par}  % <- Modificar Nombre y Apellido
+    \vspace{4cm}
+    
+    {\Large 2 de julio de 2025\par}
+    \vspace{1cm}
+    \Large{Ingeniería en Inteligencia Artificial}
+\end{titlepage}
+
+% RESUMEN
+\begin{abstract}
+%\textbf{\(\approx\) 1 párrafo.} \textit{Consiste en un solo párrafo que incluya la motivación de su trabajo y una explicación a alto nivel de la metodología utilizada y los resultados obtenidos. Breve resumen (1 párrafo) de qué se hizo, cómo se hizo, qué resultados se obtuvieron. Por ejemplo: ``En este trabajo se quiso modelar... Para llevarlo a cabo, se desarrolló ... se probó utilizando ... . El modelo performó ... y las métricas dieron ...''.}
+
+En este trabajo abordamos el problema de detección automática de anomalías en señales de ECG, con el objetivo de asistir en el diagnóstico clínico. Para ello, desarrollamos un pipeline híbrido compuesto por un Autoencoder Variacional 1D (VAE) y un clasificador XGBoost, alimentado por la latente del VAE y su error de reconstrucción. El modelo se entrena exclusivamente con registros normales de las bases PTB-XL y Chapman-Shaoxing, utilizando segmentos de la derivación II y coeficientes morfológicos extraídos mediante un modelo FMM. Evaluamos el sistema con métricas estándar (AUC, Precision, Recall, F1, Accuracy) en un conjunto de prueba no visto, obteniendo un AUC de 0.9151, Precision de 0.92 y una F1 de 0.80. Los resultados validan el enfoque y motivan mejoras como atención o aumento de datos.
+
+\end{abstract}
+
+% INTRODUCCION
+\section{Introducción}
+
+% \textbf{\(\approx\) 0.5 carillas.} 
+%\textit{Explicar el problema y por qué es importante. Discutir la motivación para abordar el problema elegido. Proporcionar el contexto necesario y explicar cuáles son las entradas y salidas del algoritmo. Por ejemplo: “La entrada de nuestro algoritmo es {imagen, amplitud de señal, edad del paciente, mediciones de lluvia, video en escala de grises, etc.}. Luego, utilizamos {red neuronal, regresión lineal, árbol de decisión, etc.} para obtener una predicción de {edad, precio de acciones, tipo de cáncer, género musical, etc.}”}
+
+
+Las enfermedades cardiovasculares son una de las principales causas de mortalidad a nivel mundial, y el electrocardiograma (ECG) es la herramienta no invasiva más utilizada para su diagnóstico. Sin embargo, su análisis manual es lento, costoso y dependiente de especialistas, dificultando su aplicación a gran escala. Este trabajo aborda la detección de anomalías en señales de ECG, buscando filtrar automáticamente los registros normales de aquellos que requieren revisión clínica.
+
+Proponemos un pipeline híbrido en dos etapas que combina aprendizaje no supervisado y supervisado, utilizando registros de las bases públicas PTB-XL y Chapman-Shaoxing. La entrada al sistema son segmentos de 2048 muestras de derivación II, junto con un vector de 21 coeficientes morfológicos (FMM). La salida es una clasificación binaria: \textit{Normal} o \textit{Anómalo}.
+
+Primero, entrenamos un Autoencoder Variacional 1D (VAE) convolucional con segmentos normales, utilizando la derivación II y ventanas de 2048 muestras, complementadas con coeficientes FMM que caracterizan la morfología de ondas P, Q, R, S y T. En este contexto, las anomalías generan errores de reconstrucción elevados con respecto a las señales sanas.
+
+Luego, combinamos los vectores latentes del encoder con el error de reconstrucción para entrenar un clasificador XGBoost que afina la decisión binaria. La arquitectura VAE consiste en un encoder convolucional con bloques de reducción temporal y un decoder simétrico. La pérdida incluye el MSE de reconstrucción y la divergencia KL, regularizando el espacio latente.
+
+Este enfoque aprovecha la capacidad del VAE para modelar la variabilidad típica de ECGs normales, sumando la precisión de XGBoost, y ofrece una solución robusta y escalable para la automatización del análisis de ECG.
+
+
+\section{Conjunto de datos y características}
+% \textbf{\(\approx\) 0.5 - 1 carillas.}   \textit{Describir el conjunto de datos: ¿cuántos ejemplos de entrenamiento/validación/prueba tiene? ¿Realizaron algún preprocesamiento? ¿Qué tipo de normalización o aumento de datos usaron? Si corresponde, incluir una cita de dónde se obtuvo el conjunto de datos. Mostrar ejemplos si el espacio lo permite. Discutir las features usadas. Si extrajeron características con transformadas de Fourier, word2vec, PCA, etc., asegúrense de mencionarlo. }
+Para el desarrollo de este trabajo se utilizaron dos bases de datos de ECG públicas y open source: PTB-XL y Chapman-Shaoxing. La combinación de ambas nos permitió contar con un conjunto de datos diverso y de gran tamaño para entrenar y validar nuestro modelo.
+
+\subsection{Fuentes de Datos}
+El conjunto de datos PTB-XL contiene 21,837 registros de ECG de 12 derivaciones (10s a 500 Hz) de 18,885 pacientes. Seguimos las divisiones de datos recomendadas por los autores del dataset \cite{wagner2020ptb}. El dataset Chapman-Shaoxing aporta 10,646 registros adicionales con características similares \cite{zheng2020chapman}. Para este, aplicamos una división inicial del 70\% para entrenamiento y 30\% para pruebas, extrayendo después un subconjunto de validación del de entrenamiento.
+
+\subsection{Preprocesamiento y Extrcción de Características} \label{sec: Preprocesamiento}
+
+El preprocesamiento de las señales y la extracción de coeficientes morfológicos en este trabajo se basan en la metodología desarrollada en el repositorio FMM-Head~\cite{verardo2023fmmhead}, que provee conjuntos de datos ya segmentados, filtrados y anotados con los parámetros del modelo FMM. Específicamente, utilizamos las versiones \texttt{ptb\_xl\_fmm} y \texttt{shaoxing\_fmm}, que contienen la señal de ECG ya centrada en picos R, recortada a 2048 muestras y acompañada de un vector de 21 coeficientes por latido. 
+
+Siguiendo el enfoque del repositorio original, se seleccionan las señales de la derivación II por coincidir su eje de registro ($\sim$+60°) con la dirección natural de la despolarización auricular y ventricular, facilitando la identificación clara de la onda P (despolarización auricular), el complejo QRS (despolarización ventricular) y la onda T (repolarización ventricular), cuyos cambios en forma o duración, como anomalías en la anchura del QRS o inversión de la T, pueden indicar isquemia o bloqueos de conducción, entre otros. A continuación, dichas señales se someten a un filtro pasa‑bajo para eliminar la deriva de línea base causada por respiración o movimiento.
+
+Luego, se detectan los picos R mediante las ecuaciones de Pan–Tompkins y se define el intervalo RR como la diferencia de tiempo entre picos R sucesivos. Cada latido se segmenta centrado en el pico R, tomando el 40\% del intervalo RR anterior y el 60\% del siguiente, y se rellena con ceros hasta alcanzar una longitud fija de 2048 muestras (múltiplo de \textit{batch-size}) para alimentar el modelo.
+
+La forma de cada latido se describe mediante el modelo de Frecuencia Modulada de Möbius (FMM), que aproxima la señal como la suma de cinco ondas moduladas (P, Q, R, S y T):
+\vspace{-0.5em}
+\[
+x(t) \;=\; \sum_{j=1}^{5} A_j \,\sin\!\Bigl(\omega_j t \;+\;\beta_j\,\arctan\!\bigl(\tan\bigl(\tfrac{t-\alpha_j}{2}\bigr)\bigr)\Bigr) \;+\; C,
+\]
+\vspace{-0.1em}
+donde \(A_j\) es la amplitud, \(\omega_j\) la frecuencia, \(\alpha_j\) la fase central, \(\beta_j\) el parámetro de asimetría y \(C\) un offset global. De este modo, cada onda aporta cinco parámetros y el offset suma uno, dando un total de 21 coeficientes morfológicos. Para evitar discontinuidades angulares, cada fase \(\alpha_j\) se codifica como \(\bigl(\cos\alpha_j,\;\sin\alpha_j\bigr)\), y todos los parámetros se ordenan según la onda correspondiente, de P a T \cite{verardo2023fmmhead}.
+
+La señal modulada a partir de esta suma captura la forma esencial de cada latido, preservando las características relevantes para la detección de anomalías —como se evidencia en las Figuras \ref{fig:sano_comparacion} y \ref{fig:anomalo_comparacion}— y, al mismo tiempo, aporta una representación más informativa al modelo.
+
+
+\vspace{0.5em}
+
+
+% --- Figuras señales sanas ---
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}[b]{0.43\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Graficos/Visualizacion/senal_sana.png}
+        \caption{Señal sana}
+        \label{fig:senal_sana}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.43\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Graficos/Visualizacion/FMM_sano.png}
+        \caption{FMM sano}
+        \label{fig:fmm_sano}
+    \end{subfigure}
+    \caption{Comparación entre señal sana y su reconstrucción FMM.}
+    \label{fig:sano_comparacion}
+\end{figure}
+
+
+% --- Figuras señales anómalas ---
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}[b]{0.43\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Graficos/Visualizacion/senal_anomala.png}
+        \caption{Señal anómala}
+        \label{fig:senal_anomala}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.43\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{Graficos/Visualizacion/FMM_anomalo.png}
+        \caption{FMM anómalo}
+        \label{fig:fmm_anomalo}
+    \end{subfigure}
+    \caption{Comparación entre señal anómala y su reconstrucción FMM.}
+    \label{fig:anomalo_comparacion}
+\end{figure}
+
+\newpage
+
+
+Además, este vector de 21 características se utiliza como una entrada condicional para el VAE junto con la señal del ECG modulada. De este modo, el VAE no solo aprende a reconstruir en base a la señal, sino que lo hace también basándose en las características morfológicas explícitas, mejorando su capacidad de representación.
+
+Finalmente, para evitar filtraciones de información entre conjuntos, calculamos la media y la desviación estándar exclusivamente sobre las ventanas normales del conjunto de entrenamiento. Estos valores se utilizaron para estandarizar todas las ventanas (entrenamiento, validación y prueba) a media cero y varianza unitaria, garantizando así la integridad del proceso de validación.
+
+
+
+% METODOS
+\section{Metodología}
+% \textbf{\(\approx\) 1 - 1.5 carillas.} \textit{Describir los algoritmos que se utilizaron o propusieron. Asegúrense de incluir la notación matemática relevante. Si el espacio lo permite, pueden dar una breve descripción (\(\approx\) 1 párrafo) de cómo funcionan. Si utilizaron un algoritmo novedoso o avanzado no visto en clase, dediquen 1-2 párrafos para explicarlo. }
+
+%\textit{Describir el conjunto de datos: ¿Qué proporción de entrenamiento/validación/prueba se utilizó? ¿Se realizó algún preprocesamiento? ¿Qué tipo de normalización o aumento de datos se utilizó?}
+
+% \textit{Detallar los hiperparámetros elegidos y cómo se seleccionaron. ¿Realizaron validación cruzada? Si es así, ¿cuántos folds utilizaron?}
+
+% \textit{Incluir métricas de rendimiento utilizadas.}
+
+En este apartado describimos con detalle los algoritmos que componen nuestro pipeline híbrido: el Autoencoder Variacional 1D (VAE) convolucional y el clasificador supervisado XGBoost.
+
+
+\subsection{Autoencoder Variacional 1D Condicional}
+
+El VAE se define como un modelo generativo probabilístico con un \textit{encoder} 
+\(
+q_\phi(\mathbf{z} \mid \mathbf{x}_s, \mathbf{x}_f)
+\)
+y un \textit{decoder} 
+\(
+p_\theta(\mathbf{x}_s \mid \mathbf{z}).
+\)
+El \textit{encoder} procesa la señal ECG $\mathbf{x}_s$ y el vector de coeficientes FMM $\mathbf{x}_f$ para mapearlos a una distribución latente. Su arquitectura es la siguiente:
+\vspace{-0.2em}
+\begin{itemize}
+    \item Una capa inicial $\mathrm{Conv1D}(1\to32,\; k=19,\; s=2,\; p=9)$ con activación $\mathrm{LeakyReLU}$.
+    \vspace{-0.2em}
+    \item $n_{\mathrm{blocks}}=3$ bloques residuales 1D 
+    \(
+       \mathrm{ResBlock1D}(32,\; k=3,\; \mathrm{dilation} = 1,2,4)
+    \)
+    que usan dilataciones crecientes para ampliar el campo receptivo sin alterar la resolución temporal.
+    \vspace{-0.2em}
+    \item Un aplanado (\textit{flatten}) de la salida convolucional, que se concatena con el vector de coeficientes FMM. %$\mathbf{x}_f$.
+    \vspace{-0.2em}
+   \item Dos capas densas que proyectan el vector concatenado para obtener los parámetros de la distribución latente: la media $\boldsymbol{\mu}$ y el logaritmo de la varianza $\log\boldsymbol{\sigma}^2$, ambas de dimensión $d_z=64$.
+\end{itemize}
+
+Mediante el truco de reparametrización se muestrea el vector latente $\mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon}$, con $\boldsymbol{\epsilon} \sim \mathcal{N}(0, I)$. 
+
+
+\noindent El \textit{decoder} reconstruye la señal $\hat{\mathbf{x}}_s$ a partir de $\mathbf{z}$ con arquitectura simétrica.%:
+%\vspace{-0.2em}
+%\begin{itemize}
+%    \item Capa densa 
+%    \(
+%      \mathrm{Linear}\bigl(d_z \to 32\cdot1024\bigr)
+%    \)
+%    \item \textit{Unflatten} a $(\text{batch},32,1024)$
+%    \item \texttt{ConvTranspose1D}$(32 \to 1,\; k=19,\; s=2,\; p=9,\; \text{output\_padding}=1)$,
+%    que upsamples de vuelta a longitud 2048.
+%\end{itemize}
+
+
+La función de pérdida minimizada es la \textit{Evidence Lower Bound} (ELBO):
+\vspace{-0.4em}
+\begin{equation}
+\mathcal{L}_{\mathrm{VAE}} = \mathbb{E}_{q_\phi(\mathbf{z}|\mathbf{x})}[\|\mathbf{x}_s - \hat{\mathbf{x}}_s\|_2^2] + \beta \cdot D_{KL}\bigl(q_\phi(\mathbf{z}|\mathbf{x}) \parallel \mathcal{N}(0,I)\bigr)
+\end{equation}
+\vspace{-0.2em}
+donde el primer término es el error de reconstrucción (MSE) y el segundo la divergencia de Kullback-Leibler, ponderada por el hiperparámetro $\beta$.
+
+\vspace{-0.1em}
+
+\subsection{Clasificador XGBoost}
+Una vez entrenado el VAE, se extrae un vector de características $\mathbf{c} = [\boldsymbol{\mu}, e] \in \mathbb{R}^{65}$ para cada señal, donde $\boldsymbol{\mu}$ es el vector latente y $e$ el error de reconstrucción. Este vector se utiliza para entrenar un clasificador XGBoost que realiza la predicción final (\textit{Normal} vs. \textit{Anómalo}).
+
+Para convertir las probabilidades continuas de XGBoost en etiquetas binarias, se calculó la curva ROC (\ref{met: ROC}) sobre el conjunto de desarrollo y se seleccionó el umbral correspondiente al punto de Youden (máxima sensibilidad más especificidad menos uno). Este umbral optimiza el balance entre detectar anomalías verdaderas y minimizar falsos positivos. 
+
+\subsection{Métricas de Evaluación}
+El rendimiento del clasificador se evaluó con las siguientes métricas estándar para clasificación binaria:
+
+\begin{multicols}{2}
+\vspace{-0.5em}
+\setlength{\itemsep}{0.2em}
+\begin{itemize}
+     \item \textbf{Matriz de Confusión}: permite visualizar la distribución de los casos en verdaderos positivos (TP), falsos positivos (FP), verdaderos negativos (TN) y falsos negativos (FN), proporcionando una representación directa del comportamiento del modelo.
+    \begin{table}[H]
+    \centering
+    \scriptsize
+    \label{tab:confusion_example}
+    \begin{tabular}{|l|p{1.45cm}|p{1.45cm}|}
+        \hline
+         & \textbf{Predicho:\ Positivo} & \textbf{Predicho:\ Negativo} \\ \hline
+        \textbf{Real: Positivo} & TP & FN \\ \hline
+        \textbf{Real: Negativo} & FP & TN \\ \hline
+    \end{tabular}
+    \end{table}
+
+    \item \textbf{Accuracy}: mide la proporción de predicciones correctas sobre el total de muestras, definida como
+    \begin{equation}
+        \textstyle \text{Accuracy} = \frac{TP + TN}{TP + TN + FP + FN} \label{accuracy}
+    \end{equation}     
+
+    \item \textbf{Precision}: capacidad del modelo para no etiquetar una muestra normal como anómala. Se calcula como
+    \vspace{-0.5em}
+    \begin{equation}
+        \textstyle P = \frac{TP}{TP + FP}
+    \end{equation}
+
+    \item \textbf{Recall (Sensibilidad)}: capacidad del modelo para encontrar todas las muestras anómalas. Se calcula como
+    \vspace{-0.5em}
+    \begin{equation}
+        \textstyle R = \frac{TP}{TP + FN}
+    \end{equation}
+
+    \item \textbf{Curva Precision–Recall}: muestra en el eje horizontal el recall y en el vertical la precision al variar el umbral de decisión; sirve para visualizar el trade‑off entre ambas métricas y elegir el umbral óptimo.
+    
+    \item \textbf{F1 Score}: combina precisión y recall en una única métrica balanceada.
+    \vspace{-0.5em}
+    \begin{equation}
+        \textstyle F_1 = 2 \cdot \frac{P \cdot R}{P + R} \label{eq: F-score}
+    \end{equation}
+    
+    \item \textbf{Curva ROC}: gráfico de la TPR (True Positive Rate) frente a la FPR (False Positive Rate) al variar el umbral de decisión; permite visualizar el compromiso entre detectar positivos reales y evitar falsos positivos.
+    \label{met: ROC}
+    
+    \item \textbf{AUC-ROC}: es el área bajo la curva ROC, obtenida por integración trapezoidal sobre la relación entre TPR y FPR; mide la capacidad de distinguir entre clases a distintos umbrales. 
+    
+\end{itemize}
+
+\vspace{-0.5em}
+
+\end{multicols}
+
+
+\vspace{1em}
+% RESULTADOS
+\section{Experimentos, Resultados y Discusión}
+% \textbf{\(\approx\) 1 - 3 carillas.} \textit{Detallar los hiperparámetros elegidos y cómo se seleccionaron (por ejemplo, explicar por qué se optó por un learning rate para el gradiente descendente o cuál fue el criterio para determinar el tamaño del mini-batch). ¿Realizaron validación cruzada? Si es así, ¿cuántos folds utilizaron? Antes de presentar sus resultados, asegúrense de enumerar y explicar cuáles son sus métricas principales: precisión, recall, AUC, etc. Si es necesario, proporcionar ecuaciones para las métricas. Para los resultados, incluir una combinación de tablas y gráficos. Si están resolviendo un problema de clasificación, deberían incluir una matriz de confusión y/o curvas PR/ROC. Incluir métricas de rendimiento como precision, recall, F-score y accuracy. Para problemas de regresión, incluir el RMSE, MAE y R2. Deben tener tanto resultados cuantitativos como cualitativos. Incluir visualizaciones de resultados, mapas de calor, ejemplos de dónde falla su algoritmo y una discusión sobre por qué ciertos algoritmos fracasaron o tuvieron éxito. Además, explicar si creen que haber sobreajustado a su conjunto de entrenamiento y qué hicieron para mitigarlo. Discutir las figuras y tablas en el texto principal a lo largo de esta sección. Sus gráficos deben incluir leyendas, etiquetas de ejes y tener un tamaño de fuente que sea legible.}
+
+En esta sección presentamos la configuración experimental, la selección de hiperparámetros reales, las métricas empleadas y los resultados tanto en validación como en el conjunto de prueba final, junto con un análisis de errores.
+
+\subsection{Configuración experimental y selección de hiperparámetros}
+Para encontrar la configuración óptima del VAE, se realizó una búsqueda de hiperparámetros (\textit{hyperparameter sweep}), entrenando cada combinación durante 15 épocas. El criterio fue maximizar el AUC del clasificador XGBoost resultante en el conjunto de validación. Los rangos explorados fueron:
+\begin{itemize}
+    \item Regularización $\beta\in\{1.0, 4.0, 10.0\}$.
+    \item Tasa de aprendizaje $\ell_r\in\{10^{-3}, 5\times10^{-4}, 10^{-4}\}$.
+    \item Dimensión latente $d_z\in\{16, 32, 64\}$.
+    \item Número de bloques convolucionales $n_{\mathrm{blocks}}\in\{2, 3\}$.
+\end{itemize}
+Se utilizó el optimizador Adam con un \textit{batch size} de 64. La mejor configuración, que alcanzó un AUC de XGBoost de 0.9331 en validación, fue $\beta=1.0$, $\ell_r=5\times10^{-4}$, $d_z=64$ y $n_{\mathrm{blocks}}=3$. El modelo final se re-entrenó durante 35 épocas con estos parámetros.
+
+\subsection{Exploración de los Datos y Características FMM}
+El pipeline de este trabajo incorpora como conocimiento previo (\textit{prior knowledge}) un conjunto de 21 características morfológicas extraídas mediante un Modelo Basado en Fourier (FMM, por sus siglas en inglés). Este modelo, propuesto por Verardo et al. (2023), analiza la morfología de cada latido para caracterizar las ondas P, Q, R, S y T como se explicó en la sección \ref{sec: Preprocesamiento}.
+Estos coeficientes se introducen en el \textit{encoder} del VAE para condicionar el aprendizaje de la representación latente.
+
+\vspace{3em}
+\subsection{Análisis de Convergencia del Entrenamiento}
+Para validar la estabilidad del componente de aprendizaje no supervisado, se analizó la evolución de la función de pérdida del VAE durante su re-entrenamiento final de 35 épocas. La Figura~\ref{fig:loss_curve} muestra una disminución suave y sostenida de la pérdida total (ELBO), así como de sus componentes de reconstrucción (MSE) y regularización (KL). Esto indica una convergencia estable, sin signos de inestabilidad o divergencia, lo que da confianza en la calidad de las características extraídas por el VAE.
+
+\begin{figure}[ht!]
+    \centering
+    \includegraphics[width=0.55\linewidth]{Graficos/Metricas/TrainLoss.png}
+    \caption{Curvas de pérdida del VAE durante las 35 épocas de entrenamiento final. Se observa una convergencia relativamente estable.}
+    \label{fig:loss_curve}
+\end{figure}
+
+\vspace{-1em}
+
+\subsection{Resultados en validación y test final}
+Los resultados numéricos del modelo final se resumen en la Tabla~\ref{tab:metrics_comp}. Se observa un rendimiento general alto, con un AUC superior a 0.91 en el conjunto de prueba.
+
+\begin{table}[ht]
+  \centering
+  \caption{Métricas en validación y test final}
+  \label{tab:metrics_comp}
+  \begin{tabular}{lcc}
+    \toprule
+    Métrica     & Validación & Test final \\
+    \midrule
+    AUC-ROC     & 0.9235     & 0.9151     \\
+    Precision   & 0.8780     & 0.9207     \\
+    Recall      & 0.8276     & 0.7084     \\
+    F1-score    & 0.8521     & 0.8007     \\
+    Accuracy    & 0.8563     & 0.8237     \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Para evitar el sesgo hacia la clase mayoritaria, el conjunto de prueba fue balanceado mediante \textit{undersampling}, equiparando la cantidad de segmentos normales y anómalos.
+
+Las matrices de confusión (Figura~\ref{fig:cms}) permiten visualizar la distribución de los errores. En el conjunto de test, el modelo identificó correctamente 50759 anomalías, pero falló en detectar 15763 normales, lo que explica el valor de Recall. Por otro lado, solo 3297 señales anómalas fueron incorrectamente clasificadas como normales, validando la alta Precisión del modelo.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}[b]{0.35\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Graficos/Metricas/CM_tr_val.png}
+    \caption{Validación}
+  \end{subfigure}
+  \quad
+  \begin{subfigure}[b]{0.35\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Graficos/Metricas/CM_dev_test.png}
+    \caption{Test final}
+  \end{subfigure}
+  \caption{Matrices de confusión en validación y test final.}
+  \label{fig:cms}
+\end{figure}
+
+\vspace{4.65em}
+En el conjunto de desarrollo, el punto de Youden sobre la curva ROC dio un umbral óptimo de $0.584$ (TPR = 0.839, FPR = 0.061). Este mismo umbral se utilizó para convertir las probabilidades continuas en etiquetas binarias a la hora de computar las matrices de confusión y las métricas finales en validación y test.
+
+\begin{figure}[ht!]
+    \centering
+    \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Graficos/Metricas/ROC_dev_test}
+        \caption{Curva ROC (Test)}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{Graficos/Metricas/PR_dev_test.png}
+        \caption{Curva Precision-Recall (Test)}
+    \end{subfigure}
+    \caption{Curvas de rendimiento en el conjunto de prueba. El área bajo la curva ROC (izquierda) confirma la buena capacidad de clasificación del modelo.}
+    \label{fig:curves}
+\end{figure}
+
+\vspace{-0.5em}
+
+Las curvas ROC y Precision-Recall (PR) del conjunto de test (Figura~\ref{fig:curves}) muestran que el modelo mantiene un buen poder discriminativo, con un AUC de 0.9151 muy por encima de un clasificador aleatorio.
+
+
+
+\subsection{Discusión}
+\vspace{-0.4em}
+%El pipeline híbrido VAE\(+\)XGBoost demuestra un rendimiento sólido, superando ampliamente el umbral basado únicamente en reconstrucción: alcanzando un AUC superior a 0.91 y una Precisión por encima de 0.92 en el conjunto de prueba no visto. La reducción de recall en test (0.7084) indica que ciertos casos de anomalía más sutiles son menos detectados, sugiriendo que incorporar técnicas de atención o aumentos de datos específicos podría mejorar la sensibilización. Además, el análisis de la matriz de confusión revela que la mayoría de falsos positivos provienen de artefactos de ruido, por lo que un preprocesamiento de filtrado más agresivo podría reducir estos errores.
+
+%Este comportamiento es un trade-off entre Precisión y Recall. Nuestro modelo se volvió más "conservador" en el conjunto de test, prefiriendo la certeza (alta precisión) a costa de omitir algunos casos anómalos (bajo recall).
+
+%El uso de validación cruzada y el hp-sweep estrictamente sobre el conjunto de entrenamiento/validación garantizan la generalización, evitándose fugas de datos. En conclusión, el enfoque propuesto ofrece una base sólida para detección automática de anomalías en ECG, con espacio de mejora en robustez frente a variaciones de señal y ruido. Futuras mejoras podrían realizarse mediante técnicas de data augmentation para exponer al VAE a una mayor variabilidad de anomalías sintéticas.
+
+\subsubsection*{Análisis cuantitativo}
+El pipeline híbrido VAE\(+\)XGBoost demuestra un rendimiento sólido, superando ampliamente el umbral basado únicamente en reconstrucción. El modelo alcanzó un AUC superior a 0.91 y una Precisión por encima de 0.92 en el conjunto de prueba. La reducción de Recall en test (0.7084) indica que ciertos casos de anomalía más sutiles son menos detectados. La mayoría de los falsos positivos provienen de artefactos de ruido, lo que sugiere que el sistema prioriza evitar falsos positivos aunque a costa de perder sensibilidad.
+
+\section{Conclusión y trabajo futuro}
+Este comportamiento refleja un trade-off entre Precisión y Recall: el modelo se comporta de manera conservadora. Podrían explorarse técnicas como mecanismos de atención o augmentación sintética para mejorar la capacidad de detección de anomalías sutiles. Asimismo, un preprocesamiento más agresivo podría reducir el impacto de señales ruidosas. En conjunto, el enfoque propuesto ofrece una base sólida, y abre el camino hacia mejoras de robustez frente a variaciones de señal y ruido, demostrando ser una herramienta prometedora para asistir el análisis automático de ECGs en contextos clínicos reales.
+
+%\section{Apéndices}
+% \textit{En caso de que corresponda, podrán incluir derivaciones de pruebas o visualizaciones adicionales que no fueron esenciales para la comprensión de su algoritmo en la sección de metodología.}
+
+
+
+
+\begin{thebibliography}{9}
+
+
+
+\bibitem{verardo2023fmmhead}
+Giacomo Verardo, Magnus Boman, Samuel Bruchfeld, Marco Chiesa, Sabine Koch, Gerald Q. Maguire Jr., y Dejan Kostic.  
+\textit{FMM-Head: Enhancing Autoencoder-based ECG anomaly detection with prior knowledge}, 2023.
+
+\bibitem{jang2021unsupervised}
+Jong-Hwan Jang, Tae Young Kim, Hong-Seok Lim, y Dukyong Yoon.  
+\textit{Unsupervised feature learning for electrocardiogram data using the convolutional variational autoencoder}.  
+PLOS ONE, vol. 16, no. 12, p. e0260612, 2021.  
+\url{https://doi.org/10.1371/journal.pone.0260612}
+
+\bibitem{wagner2020ptb}
+Patrick Wagner, Nico Strodthoff, Robert Bousseljot, Daniel Kreiseler, Frank Lunze, Wojciech Samek, y Thomas Schaeffter.  
+\textit{PTB-XL: A Large Publicly Available ECG Dataset}. Scientific Data, 7, 154 (2020).  
+\url{https://doi.org/10.1038/s41597-020-0495-6}
+
+\bibitem{zheng2020chapman}
+Jie Zheng, Jinbo Zhang, Sibao Danioko, et al.  
+\textit{A 12-lead electrocardiogram database for arrhythmia research covering more than 10,000 patients}. Scientific Data, 7, 48 (2020).  
+\url{https://doi.org/10.1038/s41597-020-0381-4}
+
+\bibitem{pytorch}
+Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., ... \& Chintala, S. (2019).  
+\textit{PyTorch: An Imperative Style, High-Performance Deep Learning Library}. NeurIPS.
+
+\bibitem{xgboost}
+Chen, T., \& Guestrin, C. (2016).  
+\textit{XGBoost: A Scalable Tree Boosting System}. Proceedings of the 22nd ACM SIGKDD.
+
+\bibitem{sklearn}
+Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., ... \& Duchesnay, E. (2011).  
+\textit{Scikit-learn: Machine Learning in Python}. Journal of Machine Learning Research, 12, 2825–2830.
+
+\bibitem{numpy}
+Harris, C. R., Millman, K. J., van der Walt, S. J., Gommers, R., Virtanen, P., Cournapeau, D., ... \& Oliphant, T. E. (2020).  
+\textit{Array programming with NumPy}. Nature, 585(7825), 357–362.
+
+\bibitem{pandas}
+McKinney, W. (2010).  
+\textit{Data Structures for Statistical Computing in Python}. Proceedings of the 9th Python in Science Conference.
+
+\bibitem{matplotlib}
+Hunter, J. D. (2007).  
+\textit{Matplotlib: A 2D graphics environment}. Computing in Science \& Engineering, 9(3), 90–95.
+
+\end{thebibliography}
+
+\subsection*{Fuentes de datos}
+
+\begin{enumerate}
+  \item \textbf{PTB‑XL ECG Dataset, versión 1.0.3.}  
+    Patrick Wagner et al. (2020). \emph{PTB-XL: A Large Publicly Available ECG Dataset}. \emph{Scientific Data}. Disponible en PhysioNet: \url{https://doi.org/10.13026/kfzx-aw45}. Citado como \cite{wagner2020ptb}.
+
+  \item \textbf{Chapman‑Shaoxing Database de ECG 12 derivados.}  
+    Jie Zheng et al. (2020). \emph{A 12-lead electrocardiogram database for arrhythmia research covering more than 10,000 patients}. \emph{Scientific Data}. Citado como \cite{zheng2020chapman}.
+
+  \item \textbf{Conjuntos preprocesados FMM (Fast Multi‑resolution Matching).}  
+    Archivos disponibles públicamente:  
+    \begin{itemize}
+      \item \url{https://drive.google.com/uc?id=1nYRvbVYJJXPbCwKEqOIeCLnMXdIDAka7}
+      \item \url{https://drive.google.com/uc?id=1FjvmVb8-PnpDdoBwv-Eqb89tYFOCx9KW}
+    \end{itemize}
+    (Estos archivos contienen las señales originales transformadas mediante FMM)
+\end{enumerate}
+
+% \cite{verardo2023fmmhead}
+
+% \cite{jang2021unsupervised}
+
+%\textit{Esta sección debe incluir citas de artículos mencionados en el informe, artículos que describan algoritmos usados que no fueron cubiertos en clase, y bibliotecas de código utilizadas (esto incluye scikit-learn, TensorFlow, PyTorch, etc.). Los formatos aceptables incluyen: MLA, APA, IEEE.}
+
+
+\end{document}
