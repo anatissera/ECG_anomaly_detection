@@ -26,8 +26,8 @@ ECG_anomaly_detection/
 │   ├── vae_model.pt
 │   ├── vae_state.pt
 │   └── xgb_clf.joblib
-├── [Informe.pdf](Informe.pdf)                   # Informe final en formato PDF
-├── [Poster.pdf](Poster.pdf)                    # Póster en formato PDF
+├── Informe.pdf                   # Informe final en formato PDF
+├── Poster.pdf                    # Póster en formato PDF
 ├── requirements.txt              # Dependencias de Python
 └── README.md                     # Este archivo (descripción y uso)
 ```
@@ -49,8 +49,8 @@ ECG_anomaly_detection/
 - **`saved_models_and_params/`**: Contiene el modelo VAE entrenado (`vae_model.pt`, `vae_state.pt`), el clasificador XGB (`xgb_clf.joblib`), y los archivos JSON con los mejores hiperparámetros y umbral de detección (`best_hps.json`, `threshold.json`).
 
 - **Informes**:
-  - `[Informe.pdf](Informe.pdf)`: Documento con la descripción metodológica, resultados y conclusiones.
-  - `[Poster.pdf](Poster.pdf)`: Resumen gráfico del proyecto para presentación.
+  - [Informe.pdf](Informe.pdf): Documento con la descripción metodológica, resultados y conclusiones.
+  - [Poster.pdf](Poster.pdf): Resumen gráfico del proyecto para presentación.
 
 ---
 
